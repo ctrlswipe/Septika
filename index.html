@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>SEPTIKA: ROGUELIKE</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
@@ -20,37 +22,47 @@
             overflow: hidden; background-color: var(--bg-dark);
             font-family: 'VT323', monospace;
             user-select: none; -webkit-user-select: none;
-            touch-action: none;
+            touch-action: none; /* Disables browser zoom/pan */
+            -webkit-tap-highlight-color: transparent;
         }
 
         #game-container { position: relative; width: 100%; height: 100%; background: #000; }
         canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 
-        /* FX Layers */
+        /* --- FX LAYERS (Visuals only, NO INTERACTION) --- */
         .scanlines {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.05) 50%);
-            background-size: 100% 4px; pointer-events: none; z-index: 50;
+            background-size: 100% 4px; pointer-events: none; z-index: 10;
         }
         .crt-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.2) 100%);
-            pointer-events: none; z-index: 51;
+            pointer-events: none; z-index: 11;
         }
 
-        /* UI Base */
+        /* --- HUD LAYER (Gameplay UI - ALWAYS CLICKABLE) --- */
+        #hud-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 500; /* High priority */
+            pointer-events: none; /* Let clicks pass through empty space to canvas */
+        }
+        
+        /* Make sure buttons/slots inside HUD catch clicks */
+        #hud-layer .interactive { pointer-events: auto !important; }
+
+        /* --- MENUS LAYER (Overlays) --- */
         .ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 100; pointer-events: none;
+            z-index: 600; /* Above HUD */
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             transition: opacity 0.2s, transform 0.2s;
-            background: rgba(0,0,0,0.8); backdrop-filter: blur(4px);
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
+            pointer-events: none; opacity: 0; transform: scale(1.1);
         }
         .ui-layer.active { pointer-events: auto; opacity: 1; transform: scale(1); }
-        .ui-layer.hidden { pointer-events: none; opacity: 0; transform: scale(1.1); }
-        .ui-layer.transparent { background: transparent; backdrop-filter: none; }
 
-        /* Text Styles */
+        /* Typography */
         h1 {
             font-size: clamp(3rem, 10vw, 6rem); margin: 0; line-height: 0.8; color: #fff;
             text-shadow: 3px 3px 0 var(--accent-mag), -3px -3px 0 var(--accent-cyan);
@@ -79,6 +91,16 @@
         .btn-danger { border-color: var(--accent-mag); color: var(--accent-mag); }
         .btn-danger:hover { background: var(--accent-mag); color: #fff; }
 
+        /* Fullscreen Btn */
+        .btn-fs {
+            position: absolute; bottom: 10px; left: 10px;
+            width: 40px; height: 40px;
+            background: rgba(0,0,0,0.5); border: 1px solid #555;
+            color: #fff; font-size: 1.2rem;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; z-index: 999; pointer-events: auto;
+        }
+
         /* Shop Grid */
         .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px; }
         .shop-item {
@@ -91,28 +113,27 @@
         .shop-item .cost { color: var(--accent-cyan); font-size: 1.2rem; }
 
         /* Perks HUD */
+        .perk-container {
+            position: absolute; bottom: 90px; right: 20px;
+            display: flex; gap: 15px;
+        }
         .perk-slot {
-            width: 60px; height: 60px; border: 2px dashed rgba(255,255,255,0.3);
+            width: 55px; height: 55px; border: 2px dashed rgba(255,255,255,0.3);
             display: flex; justify-content: center; align-items: center;
-            cursor: pointer; background: rgba(0,0,0,0.5); pointer-events: auto;
+            cursor: pointer; background: rgba(0,0,0,0.6); 
             position: relative; border-radius: 8px;
         }
-        .perk-slot.filled { border-style: solid; border-color: var(--accent-gold); background: rgba(0,0,0,0.8); }
-        .perk-slot:hover { transform: scale(1.1); }
-        .perk-container {
-            position: absolute; bottom: 120px; right: 20px;
-            display: flex; gap: 15px; z-index: 200;
-        }
+        .perk-slot.filled { border-style: solid; border-color: var(--accent-gold); background: rgba(0,0,0,0.9); }
 
         /* Modals */
         .modal {
             position: absolute; top:50%; left:50%; transform:translate(-50%,-50%);
             width: 85%; max-width: 500px; background: #111; border: 2px solid #fff;
-            padding: 20px; z-index: 999; display: none; text-align: left;
+            padding: 20px; z-index: 1000; display: none; text-align: left;
             box-shadow: 0 0 50px rgba(0,0,0,0.9);
-            max-height: 80vh; overflow-y: auto;
+            max-height: 85vh; overflow-y: auto;
         }
-        .modal.open { display: block; }
+        .modal.open { display: block; pointer-events: auto; }
         .modal h3 { color: var(--accent-cyan); margin-top: 0; text-align: center; text-transform: uppercase;}
         .modal p { color: #ccc; font-size: 1.2rem; line-height: 1.4; margin-bottom: 10px; }
         .modal strong { color: var(--accent-gold); }
@@ -127,71 +148,27 @@
     <div class="scanlines"></div>
     <div class="crt-overlay"></div>
 
-    <!-- TITLE SCREEN -->
-    <div id="screen-title" class="ui-layer active" style="cursor: pointer;">
-        <h1>SEPTIKA</h1>
-        <div class="level-badge">RESHUFFLE UPDATE</div>
-        <div class="blink" style="margin-top:30px; font-size:1.5rem;">[ PRESS TO START ]</div>
-    </div>
+    <!-- FULLSCREEN TOGGLE -->
+    <button class="btn-fs" onclick="toggleFullScreen()">⛶</button>
 
-    <!-- MAIN MENU -->
-    <div id="screen-menu" class="ui-layer hidden">
-        <h1>MENU</h1>
-        <button class="btn" onclick="Game.startNewCampaign()">NEW RUN</button>
-        <button class="btn" onclick="SaveSys.showHighScores()">HIGH SCORES</button>
-        <button class="btn" onclick="document.getElementById('faq-modal').classList.add('open')">RULES / FAQ</button>
-        <button class="btn" onclick="window.location.reload()">EXIT GAME</button>
-    </div>
-
-    <!-- SHOP -->
-    <div id="screen-shop" class="ui-layer hidden">
-        <h2>BLACK MARKET</h2>
-        <div style="color: #fff;">WALLET: <span id="shop-money" style="color:var(--accent-gold)">$0</span></div>
-        
-        <div class="shop-grid">
-            <div class="shop-item" onclick="Shop.buy('seer')">
-                <h3>THE SEER</h3>
-                <div class="cost">$150</div>
-            </div>
-            <div class="shop-item" onclick="Shop.buy('freeze')">
-                <h3>FREEZE</h3>
-                <div class="cost">$200</div>
-            </div>
-            <div class="shop-item" onclick="Shop.buy('wildcard')">
-                <h3>WILDCARD</h3>
-                <div class="cost">$300</div>
-            </div>
-            <div class="shop-item" onclick="Shop.buy('midas')">
-                <h3>MIDAS</h3>
-                <div class="cost">$400</div>
-            </div>
-        </div>
-
-        <div style="display:flex; gap:10px;">
-            <button class="btn" onclick="Game.nextLevel()">NEXT LEVEL >></button>
-            <button class="btn" onclick="document.getElementById('info-modal').classList.add('open')">?</button>
-        </div>
-        <div style="margin-top:20px;">
-            <button class="btn btn-danger" onclick="Game.abandonRun()" style="font-size: 1rem;">ABANDON RUN</button>
-        </div>
-    </div>
-
-    <!-- GAME HUD -->
-    <div id="screen-game" class="ui-layer hidden transparent">
-        <div style="position:absolute; top:20px; width:100%; display:flex; justify-content:space-between; padding:0 20px; box-sizing:border-box; color:#fff; font-size:1.5rem; text-shadow:2px 2px 0 #000;">
+    <!-- HUD LAYER (Always active during game, Z-Index 500) -->
+    <div id="hud-layer" class="hidden">
+        <!-- Top Stats -->
+        <div style="position:absolute; top:15px; width:100%; display:flex; justify-content:space-between; padding:0 20px; box-sizing:border-box; color:#fff; font-size:1.5rem; text-shadow:2px 2px 0 #000;">
             <span id="hud-level">LVL 1</span>
             <span id="hud-money" style="color:var(--accent-gold)">$0</span>
         </div>
         
-        <!-- Perk Slots HUD -->
+        <!-- Perk Slots -->
         <div class="perk-container">
-            <div class="perk-slot" id="slot-0" onclick="Game.usePerk(0)"></div>
-            <div class="perk-slot" id="slot-1" onclick="Game.usePerk(1)"></div>
+            <div class="perk-slot interactive" id="slot-0" onclick="Game.usePerk(0)" ontouchstart="Game.usePerk(0)"></div>
+            <div class="perk-slot interactive" id="slot-1" onclick="Game.usePerk(1)" ontouchstart="Game.usePerk(1)"></div>
         </div>
 
-        <div style="position:absolute; bottom:20px; width:100%; display:flex; justify-content:center; gap:20px; pointer-events:none;">
-            <button id="btn-take" class="btn" style="pointer-events:auto" onclick="Game.take()">DRAW</button>
-            <button id="btn-deal" class="btn" style="pointer-events:auto" onclick="Game.deal()">PLAY</button>
+        <!-- Controls -->
+        <div style="position:absolute; bottom:20px; width:100%; display:flex; justify-content:center; gap:20px;">
+            <button id="btn-take" class="btn interactive" onclick="Game.take()" ontouchstart="event.stopPropagation(); Game.take()">DRAW</button>
+            <button id="btn-deal" class="btn interactive" onclick="Game.deal()" ontouchstart="event.stopPropagation(); Game.deal()">PLAY</button>
         </div>
         
         <!-- Twist Banner -->
@@ -200,16 +177,68 @@
         </div>
     </div>
 
-    <!-- GAME OVER -->
-    <div id="screen-gameover" class="ui-layer hidden">
-        <h1 id="end-title">GAME OVER</h1>
-        <p id="end-desc" style="color:#ccc; font-size:1.5rem;">SCORE: 0</p>
+    <!-- MENUS (Z-Index 600) -->
+
+    <!-- TITLE SCREEN -->
+    <div id="screen-title" class="ui-layer active" style="cursor: pointer;">
+        <h1>SEPTIKA</h1>
+        <div class="level-badge">FINAL MOBILE EDITION</div>
+        <div class="blink" style="margin-top:30px; font-size:1.5rem;">[ PRESS TO START ]</div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="screen-menu" class="ui-layer">
+        <h1>MENU</h1>
+        <button class="btn interactive" onclick="Game.startNewCampaign()">NEW RUN</button>
+        <button class="btn interactive" onclick="SaveSys.showHighScores()">HIGH SCORES</button>
+        <button class="btn interactive" onclick="document.getElementById('faq-modal').classList.add('open')">RULES / FAQ</button>
+    </div>
+
+    <!-- SHOP -->
+    <div id="screen-shop" class="ui-layer">
+        <h2>BLACK MARKET</h2>
+        <div style="color: #fff;">WALLET: <span id="shop-money" style="color:var(--accent-gold)">$0</span></div>
+        
+        <div class="shop-grid">
+            <div class="shop-item interactive" onclick="Shop.buy('seer')">
+                <h3>THE SEER</h3>
+                <div class="cost">$150</div>
+            </div>
+            <div class="shop-item interactive" onclick="Shop.buy('freeze')">
+                <h3>FREEZE</h3>
+                <div class="cost">$200</div>
+            </div>
+            <div class="shop-item interactive" onclick="Shop.buy('wildcard')">
+                <h3>WILDCARD</h3>
+                <div class="cost">$300</div>
+            </div>
+            <div class="shop-item interactive" onclick="Shop.buy('midas')">
+                <h3>MIDAS</h3>
+                <div class="cost">$400</div>
+            </div>
+        </div>
+
         <div style="display:flex; gap:10px;">
-            <button class="btn" onclick="Game.startNewCampaign()">TRY AGAIN</button>
-            <button class="btn" onclick="UI.show('screen-menu')">MAIN MENU</button>
+            <button class="btn interactive" onclick="Game.nextLevel()">NEXT LEVEL >></button>
+            <button class="btn interactive" onclick="document.getElementById('info-modal').classList.add('open')">?</button>
+        </div>
+        <div style="margin-top:20px;">
+            <button class="btn btn-danger interactive" onclick="Game.abandonRun()" style="font-size: 1rem;">ABANDON RUN</button>
         </div>
     </div>
 
+    <!-- GAME OVER -->
+    <div id="screen-gameover" class="ui-layer">
+        <h1 id="end-title">GAME OVER</h1>
+        <p id="end-desc" style="color:#ccc; font-size:1.5rem;">SCORE: 0</p>
+        <div style="display:flex; gap:10px;">
+            <button class="btn interactive" onclick="Game.startNewCampaign()">TRY AGAIN</button>
+            <button class="btn interactive" onclick="UI.show('screen-menu')">MAIN MENU</button>
+        </div>
+    </div>
+
+    <!-- POPUPS (Z-Index 1000) -->
+    
     <!-- INFO MODAL -->
     <div id="info-modal" class="modal">
         <h3>PERKS</h3>
@@ -217,7 +246,7 @@
         <p><strong>FREEZE:</strong> Opponent skips their next turn.</p>
         <p><strong>WILDCARD:</strong> Adds a Joker to your hand instantly.</p>
         <p><strong>MIDAS:</strong> Double money reward if you win this round.</p>
-        <button class="btn" style="width:100%; margin:0;" onclick="document.getElementById('info-modal').classList.remove('open')">CLOSE</button>
+        <button class="btn interactive" style="width:100%; margin:0;" onclick="document.getElementById('info-modal').classList.remove('open')">CLOSE</button>
     </div>
 
     <!-- HIGHSCORE MODAL -->
@@ -225,28 +254,40 @@
         <h3>GAME HISTORY</h3>
         <p style="text-align:center">HIGHEST LEVEL REACHED:</p>
         <div id="highscore-val" class="score-display">LVL 1</div>
-        <button class="btn" style="width:100%; margin:0;" onclick="document.getElementById('score-modal').classList.remove('open')">CLOSE</button>
+        <button class="btn interactive" style="width:100%; margin:0;" onclick="document.getElementById('score-modal').classList.remove('open')">CLOSE</button>
     </div>
 
     <!-- FAQ MODAL -->
     <div id="faq-modal" class="modal">
         <h3>HOW TO PLAY</h3>
         <p><strong>OBJECTIVE:</strong> Be the first to empty your hand.</p>
-        <p><strong>MATCHING:</strong> You can play a card if it matches the <strong>Rank (Number)</strong> or <strong>Suit (Color)</strong> of the top card on the pile.</p>
-        <p><strong>STACKING:</strong> You can play multiple cards if they have the same Rank (e.g., three 7s) or continue a Suit chain.</p>
-        <p><strong>STRATEGY:</strong> The <strong>LAST SELECTED CARD</strong> will end up on top. Use this to change the suit!</p>
-        <p><strong>RESHUFFLE:</strong> When the deck is empty, the played pile is shuffled into a new deck, and the top card changes randomly.</p>
-        <button class="btn" style="width:100%; margin:0;" onclick="document.getElementById('faq-modal').classList.remove('open')">CLOSE</button>
+        <p><strong>MATCHING:</strong> Play if it matches the <strong>Rank (Number)</strong> or <strong>Suit (Color)</strong> of the top card.</p>
+        <p><strong>STACKING:</strong> You can play multiple cards if they have the same Rank (e.g. three 7s) or match the Suit.</p>
+        <p><strong>STRATEGY:</strong> The <strong>LAST SELECTED CARD</strong> goes on top. Use this to switch colors!</p>
+        <p><strong>RESHUFFLE:</strong> When deck is empty, cards are reshuffled and top card changes.</p>
+        <button class="btn interactive" style="width:100%; margin:0;" onclick="document.getElementById('faq-modal').classList.remove('open')">CLOSE</button>
     </div>
 
 </div>
 
 <script>
 /**
- * SEPTIKA: v5.6
- * - Deck Reshuffle logic
- * - Seer Nerf (One card only)
+ * SEPTIKA: FINAL MOBILE EDITION
+ * - Z-Index Fix for GitHub Pages/Mobile
+ * - Fullscreen API
+ * - Responsive Layout Calculation
  */
+
+/* --- FULLSCREEN --- */
+function toggleFullScreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.log(`Error attempting to enable full-screen mode: ${err.message}`);
+        });
+    } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+    }
+}
 
 /* --- PERSISTENCE --- */
 const SaveSys = {
@@ -284,11 +325,17 @@ const AudioSys = {
     sfxErr: function() { this.tone(150,'sawtooth',0.2); }
 };
 
-/* --- GRAPHICS --- */
+/* --- GRAPHICS & RESIZE --- */
 const C = document.getElementById('gameCanvas');
 const ctx = C.getContext('2d', {alpha:false});
 let W, H;
-function resize() { W = window.innerWidth; H = window.innerHeight; C.width = W; C.height = H; ctx.imageSmoothingEnabled = false; }
+function resize() { 
+    W = window.innerWidth; H = window.innerHeight; 
+    C.width = W; C.height = H; 
+    ctx.imageSmoothingEnabled = false; 
+    // Trigger re-layout if game is running to adapt to orientation change
+    if(Game.state === 'PLAY') Game.layout();
+}
 
 /* --- GAME LOGIC --- */
 const PERKS = {
@@ -313,7 +360,9 @@ const Game = {
     abandonRun: function() { this.state = 'MENU'; UI.show('screen-menu'); },
 
     startLevel: function() {
-        UI.show('screen-game');
+        UI.show('hud-layer'); // Show HUD specifically
+        document.getElementById('screen-shop').classList.remove('active'); // Hide shop manually
+        
         this.speedMult = 1; this.handLimit = 5; 
         this.botCheat = false; this.perkActive = null;
         this.doubleMoney = false; this.modifier = "NONE";
@@ -355,37 +404,23 @@ const Game = {
         document.getElementById('twist-text').innerText = this.modifier;
         banner.style.display = 'block';
         setTimeout(()=>{ banner.style.display='none'; }, 3000);
+        
+        this.state = 'PLAY';
     },
 
     reshufflePile: function() {
-        if(this.pile.length < 2) return; // Cannot shuffle if only 1 card
-
-        // Logic: 
-        // 1. Take all cards from pile (including top)
-        // 2. Put them in deck.
-        // 3. Shuffle deck.
-        // 4. Draw ONE card from deck to be new top (start card).
-        
+        if(this.pile.length < 2) return;
         const oldPile = [...this.pile];
-        this.pile = []; // Empty pile
-        
-        // Move to deck and reset props
+        this.pile = [];
         oldPile.forEach(c => {
             c.face = false; c.sel = false; c.visible = false; c.x = W/2; c.y = H/2;
             this.deck.push(c);
         });
-        
-        // Shuffle
         this.deck.sort(()=>Math.random()-0.5);
-        
-        // New Top Card
         let newTop = this.deck.pop();
-        newTop.face = true; 
-        newTop.ty = H/2-30; 
-        newTop.x = W/2; newTop.y = H/2; // Start from center
+        newTop.face = true; newTop.ty = H/2-30; newTop.x = W/2; newTop.y = H/2;
         this.pile.push(newTop);
-
-        // Visual Feedback
+        
         const banner = document.getElementById('twist-banner');
         document.getElementById('twist-text').innerText = "DECK RESHUFFLED";
         banner.style.display = 'block';
@@ -394,11 +429,8 @@ const Game = {
     },
 
     draw: function(who) {
-        if(this.deck.length === 0) {
-            this.reshufflePile();
-        }
-
-        if(this.deck.length === 0) return false; // Still empty? (Very rare, means all cards in hands)
+        if(this.deck.length === 0) this.reshufflePile();
+        if(this.deck.length === 0) return false;
 
         let c = this.deck.pop();
         if(who==='P') { c.face=true; this.pH.push(c); } 
@@ -412,7 +444,6 @@ const Game = {
         AudioSys.sfxPowerup();
         
         if(p === 'seer') {
-            // NERF: Reveal only ONE random card
             const hidden = this.bH.filter(c => !c.visible);
             if(hidden.length > 0) {
                 const rnd = hidden[Math.floor(Math.random() * hidden.length)];
@@ -435,14 +466,23 @@ const Game = {
 
     layout: function() {
         let n=this.pH.length;
-        let by=H-240; 
+        // ADAPTIVE LAYOUT: Use % of Height
+        // Portrait: Lower part of screen is approx H*0.8
+        // Landscape: H*0.75
+        let by = H * 0.75; 
+        
         this.pH.forEach((c,i)=>{
             c.tx = W/2 + (i-(n-1)/2) * Math.min(50, W/(n+1));
             c.ty = c.sel ? by-30 : by + Math.abs(i-(n-1)/2)*10;
             c.ta = (i-(n-1)/2)*0.08;
         });
         let bn=this.bH.length;
-        this.bH.forEach((c,i)=>{ c.tx = W/2 + (i-(bn-1)/2)*30; c.ty = 60; c.ta=0; });
+        this.bH.forEach((c,i)=>{ c.tx = W/2 + (i-(bn-1)/2)*30; c.ty = H*0.1; c.ta=0; });
+        
+        // Ensure pile is centered
+        if(this.pile.length) {
+            this.pile[this.pile.length-1].ty = H/2 - 30;
+        }
     },
 
     input: function(x,y) {
@@ -472,7 +512,7 @@ const Game = {
 
                     if(valid) { 
                         c.sel=true; 
-                        c.selTime = Date.now(); // Record Timestamp
+                        c.selTime = Date.now();
                         AudioSys.sfxSel(); 
                     } else AudioSys.sfxErr();
                 }
@@ -494,7 +534,6 @@ const Game = {
         
         const top = this.pile[this.pile.length-1];
 
-        // --- SORTING LOGIC ---
         playCards.sort((a, b) => {
             const aBridge = (a.r === top.r || a.s === top.s || a.r === 'JOKER' || top.r === 'JOKER');
             const bBridge = (b.r === top.r || b.s === top.s || b.r === 'JOKER' || top.r === 'JOKER');
@@ -573,8 +612,10 @@ const Game = {
 
     uiCheck: function() {
         let s=this.pH.some(c=>c.sel);
-        document.getElementById('btn-deal').disabled=!s; 
-        document.getElementById('btn-take').disabled=s;
+        const bD = document.getElementById('btn-deal');
+        const bT = document.getElementById('btn-take');
+        if(bD) bD.disabled=!s; 
+        if(bT) bT.disabled=s;
     },
 
     updateHUD: function() {
@@ -587,11 +628,11 @@ const Game = {
             if(perkKey) {
                 const data = PERKS[perkKey];
                 slot.innerHTML = `<span style="font-size:24px">${data.icon}</span>`;
-                slot.className = "perk-slot filled";
+                slot.className = "perk-slot filled interactive";
                 slot.style.borderColor = data.color;
             } else {
                 slot.innerHTML = "";
-                slot.className = "perk-slot";
+                slot.className = "perk-slot interactive";
                 slot.style.borderColor = "rgba(255,255,255,0.3)";
             }
         }
@@ -656,55 +697,56 @@ const Game = {
     }
 };
 
-/* --- SHOP --- */
-const Shop = {
-    update: function() {
-        document.getElementById('shop-money').innerText = "$" + Game.money;
-        document.getElementById('shop-inv').innerText = Game.inventory.length + "/2";
-    },
-    buy: function(itemKey) {
-        const item = PERKS[itemKey];
-        if(Game.money >= item.cost) {
-            if(Game.inventory.length < 2) {
-                Game.money -= item.cost; Game.inventory.push(itemKey);
-                AudioSys.sfxBuy(); this.update();
-            } else { AudioSys.sfxErr(); }
-        } else { AudioSys.sfxErr(); }
-    }
-};
-
 /* --- UI --- */
 const UI = {
     show: function(id) {
+        // Reset all screens
         ['screen-title','screen-menu','screen-shop','screen-game','screen-gameover'].forEach(s=>{
             const el = document.getElementById(s);
-            if(s===id) { el.classList.remove('hidden'); el.classList.add('active'); Game.state=(id==='screen-game'?'PLAY':'MENU'); }
-            else { el.classList.add('hidden'); el.classList.remove('active'); }
+            el.classList.add('hidden'); 
+            el.classList.remove('active');
         });
-        if(id==='screen-title') Game.state='TITLE';
+
+        const target = document.getElementById(id);
+        target.classList.remove('hidden');
+        target.classList.add('active');
+
+        // State & HUD management
+        if(id === 'screen-game') {
+            Game.state = 'PLAY';
+            document.getElementById('hud-layer').classList.remove('hidden');
+        } else {
+            Game.state = 'MENU';
+            document.getElementById('hud-layer').classList.add('hidden');
+        }
     },
 };
 
 /* --- INPUT --- */
 window.addEventListener('resize', resize);
 window.onload = function(){ resize(); Game.loop(); };
+
 const handleInput = (e) => {
+    // Only process Title Screen clicks globally
     if(Game.state==='TITLE') {
         if(e.type==='touchstart') e.preventDefault();
         try{ AudioSys.init(); }catch(e){}
         UI.show('screen-menu');
-    } else if(Game.state==='PLAY') {
-        if(e.type==='touchstart') e.preventDefault();
+    } 
+    // Gameplay clicks (Canvas only)
+    else if(Game.state==='PLAY') {
+        // Don't preventDefault globally on touch, or buttons won't work!
+        // Just check coordinate for canvas logic
         const r=C.getBoundingClientRect();
         let x = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
         let y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
         Game.input(x-r.left, y-r.top);
     }
 };
+
 window.addEventListener('mousedown', handleInput);
 window.addEventListener('touchstart', handleInput, {passive:false});
 
 </script>
 </body>
 </html>
-
