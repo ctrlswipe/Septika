@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>SEPTIKA: ROGUELIKE</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
@@ -22,14 +23,14 @@
             overflow: hidden; background-color: var(--bg-dark);
             font-family: 'VT323', monospace;
             user-select: none; -webkit-user-select: none;
-            touch-action: none; /* Disables browser zoom/pan */
+            touch-action: none;
             -webkit-tap-highlight-color: transparent;
         }
 
         #game-container { position: relative; width: 100%; height: 100%; background: #000; }
         canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 
-        /* --- FX LAYERS (Visuals only, NO INTERACTION) --- */
+        /* FX Layers */
         .scanlines {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.05) 50%);
@@ -41,26 +42,26 @@
             pointer-events: none; z-index: 11;
         }
 
-        /* --- HUD LAYER (Gameplay UI - ALWAYS CLICKABLE) --- */
-        #hud-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 500; /* High priority */
-            pointer-events: none; /* Let clicks pass through empty space to canvas */
-        }
-        
-        /* Make sure buttons/slots inside HUD catch clicks */
-        #hud-layer .interactive { pointer-events: auto !important; }
-
-        /* --- MENUS LAYER (Overlays) --- */
+        /* --- UI LAYERS --- */
         .ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 600; /* Above HUD */
+            z-index: 600; 
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            transition: opacity 0.2s, transform 0.2s;
             background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
-            pointer-events: none; opacity: 0; transform: scale(1.1);
+            transition: opacity 0.2s;
+            opacity: 0; pointer-events: none;
         }
-        .ui-layer.active { pointer-events: auto; opacity: 1; transform: scale(1); }
+        .ui-layer.active { opacity: 1; pointer-events: auto; }
+        
+        /* Protection for menu transitions */
+        .ui-layer.locked { pointer-events: none !important; }
+
+        /* HUD Layer */
+        #hud-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 500; pointer-events: none;
+        }
+        #hud-layer .interactive { pointer-events: auto !important; }
 
         /* Typography */
         h1 {
@@ -79,40 +80,36 @@
         /* Buttons */
         .btn {
             background: var(--ui-bg); border: 2px solid #fff;
-            color: #fff; padding: 10px 25px;
+            color: #fff; padding: 12px 25px;
             font-family: 'VT323', monospace; font-size: 1.5rem;
             cursor: pointer; margin: 8px; text-transform: uppercase;
             box-shadow: 4px 4px 0 var(--accent-mag);
             transition: transform 0.1s;
         }
-        .btn:hover:not(:disabled) { transform: translate(-2px,-2px); background: #fff; color: #000; box-shadow: 6px 6px 0 var(--accent-cyan); }
+        .btn:hover { transform: translate(-2px,-2px); background: #fff; color: #000; box-shadow: 6px 6px 0 var(--accent-cyan); }
         .btn:active { transform: translate(2px,2px); box-shadow: none; }
-        .btn:disabled { opacity: 0.5; filter: grayscale(1); cursor: default; }
         .btn-danger { border-color: var(--accent-mag); color: var(--accent-mag); }
-        .btn-danger:hover { background: var(--accent-mag); color: #fff; }
 
         /* Fullscreen Btn */
-        .btn-fs {
+        #btn-fs {
             position: absolute; bottom: 10px; left: 10px;
-            width: 40px; height: 40px;
+            width: 40px; height: 40px; display: none;
             background: rgba(0,0,0,0.5); border: 1px solid #555;
             color: #fff; font-size: 1.2rem;
-            display: flex; justify-content: center; align-items: center;
+            justify-content: center; align-items: center;
             cursor: pointer; z-index: 999; pointer-events: auto;
         }
 
-        /* Shop Grid */
+        /* Shop & Perks */
         .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px; }
         .shop-item {
             background: rgba(0,0,0,0.6); border: 1px solid #444; padding: 15px;
-            text-align: center; cursor: pointer; transition: 0.2s;
-            display: flex; flex-direction: column; align-items: center;
+            text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center;
         }
         .shop-item:hover { border-color: var(--accent-gold); background: #2a2010; }
         .shop-item h3 { margin: 5px 0; color: var(--accent-gold); }
         .shop-item .cost { color: var(--accent-cyan); font-size: 1.2rem; }
 
-        /* Perks HUD */
         .perk-container {
             position: absolute; bottom: 90px; right: 20px;
             display: flex; gap: 15px;
@@ -121,7 +118,7 @@
             width: 55px; height: 55px; border: 2px dashed rgba(255,255,255,0.3);
             display: flex; justify-content: center; align-items: center;
             cursor: pointer; background: rgba(0,0,0,0.6); 
-            position: relative; border-radius: 8px;
+            border-radius: 8px;
         }
         .perk-slot.filled { border-style: solid; border-color: var(--accent-gold); background: rgba(0,0,0,0.9); }
 
@@ -130,13 +127,11 @@
             position: absolute; top:50%; left:50%; transform:translate(-50%,-50%);
             width: 85%; max-width: 500px; background: #111; border: 2px solid #fff;
             padding: 20px; z-index: 1000; display: none; text-align: left;
-            box-shadow: 0 0 50px rgba(0,0,0,0.9);
-            max-height: 85vh; overflow-y: auto;
+            box-shadow: 0 0 50px rgba(0,0,0,0.9); max-height: 85vh; overflow-y: auto;
         }
         .modal.open { display: block; pointer-events: auto; }
-        .modal h3 { color: var(--accent-cyan); margin-top: 0; text-align: center; text-transform: uppercase;}
+        .modal h3 { color: var(--accent-cyan); margin-top: 0; text-align: center; }
         .modal p { color: #ccc; font-size: 1.2rem; line-height: 1.4; margin-bottom: 10px; }
-        .modal strong { color: var(--accent-gold); }
         .score-display { text-align: center; font-size: 3rem; color: var(--accent-gold); margin: 20px 0; border: 1px dashed #444; padding: 10px;}
 
     </style>
@@ -148,45 +143,39 @@
     <div class="scanlines"></div>
     <div class="crt-overlay"></div>
 
-    <!-- FULLSCREEN TOGGLE -->
-    <button class="btn-fs" onclick="toggleFullScreen()">⛶</button>
+    <button id="btn-fs" onclick="toggleFullScreen()">⛶</button>
 
-    <!-- HUD LAYER (Always active during game, Z-Index 500) -->
+    <!-- HUD LAYER -->
     <div id="hud-layer" class="hidden">
-        <!-- Top Stats -->
-        <div style="position:absolute; top:15px; width:100%; display:flex; justify-content:space-between; padding:0 20px; box-sizing:border-box; color:#fff; font-size:1.5rem; text-shadow:2px 2px 0 #000;">
+        <div style="position:absolute; top:safe-area-inset-top; margin-top:15px; width:100%; display:flex; justify-content:space-between; padding:0 20px; box-sizing:border-box; color:#fff; font-size:1.5rem; text-shadow:2px 2px 0 #000;">
             <span id="hud-level">LVL 1</span>
             <span id="hud-money" style="color:var(--accent-gold)">$0</span>
         </div>
         
-        <!-- Perk Slots -->
         <div class="perk-container">
             <div class="perk-slot interactive" id="slot-0" onclick="Game.usePerk(0)" ontouchstart="Game.usePerk(0)"></div>
             <div class="perk-slot interactive" id="slot-1" onclick="Game.usePerk(1)" ontouchstart="Game.usePerk(1)"></div>
         </div>
 
-        <!-- Controls -->
-        <div style="position:absolute; bottom:20px; width:100%; display:flex; justify-content:center; gap:20px;">
+        <div style="position:absolute; bottom:20px; width:100%; display:flex; justify-content:center; gap:20px; padding-bottom: safe-area-inset-bottom;">
             <button id="btn-take" class="btn interactive" onclick="Game.take()" ontouchstart="event.stopPropagation(); Game.take()">DRAW</button>
             <button id="btn-deal" class="btn interactive" onclick="Game.deal()" ontouchstart="event.stopPropagation(); Game.deal()">PLAY</button>
         </div>
         
-        <!-- Twist Banner -->
         <div id="twist-banner" style="position:absolute; top:40%; width:100%; text-align:center; color:var(--accent-mag); font-size:3rem; font-weight:bold; display:none; text-shadow:0 0 10px #000;">
             MODIFIER: <span id="twist-text">NONE</span>
         </div>
     </div>
 
-    <!-- MENUS (Z-Index 600) -->
-
-    <!-- TITLE SCREEN -->
-    <div id="screen-title" class="ui-layer active" style="cursor: pointer;">
-        <h1>SEPTIKA</h1>
-        <div class="level-badge">FINAL MOBILE EDITION</div>
-        <div class="blink" style="margin-top:30px; font-size:1.5rem;">[ PRESS TO START ]</div>
+    <!-- SCREENS -->
+    <div id="screen-title" class="ui-layer active">
+        <div style="text-align:center;">
+            <h1>SEPTIKA</h1>
+            <div class="level-badge">v6.2 STABLE</div>
+            <div class="blink" style="margin-top:30px; font-size:1.5rem;">[ TOUCH TO ENTER ]</div>
+        </div>
     </div>
 
-    <!-- MAIN MENU -->
     <div id="screen-menu" class="ui-layer">
         <h1>MENU</h1>
         <button class="btn interactive" onclick="Game.startNewCampaign()">NEW RUN</button>
@@ -194,30 +183,15 @@
         <button class="btn interactive" onclick="document.getElementById('faq-modal').classList.add('open')">RULES / FAQ</button>
     </div>
 
-    <!-- SHOP -->
     <div id="screen-shop" class="ui-layer">
         <h2>BLACK MARKET</h2>
         <div style="color: #fff;">WALLET: <span id="shop-money" style="color:var(--accent-gold)">$0</span></div>
-        
         <div class="shop-grid">
-            <div class="shop-item interactive" onclick="Shop.buy('seer')">
-                <h3>THE SEER</h3>
-                <div class="cost">$150</div>
-            </div>
-            <div class="shop-item interactive" onclick="Shop.buy('freeze')">
-                <h3>FREEZE</h3>
-                <div class="cost">$200</div>
-            </div>
-            <div class="shop-item interactive" onclick="Shop.buy('wildcard')">
-                <h3>WILDCARD</h3>
-                <div class="cost">$300</div>
-            </div>
-            <div class="shop-item interactive" onclick="Shop.buy('midas')">
-                <h3>MIDAS</h3>
-                <div class="cost">$400</div>
-            </div>
+            <div class="shop-item interactive" onclick="Shop.buy('seer')"><h3>THE SEER</h3><div class="cost">$150</div></div>
+            <div class="shop-item interactive" onclick="Shop.buy('freeze')"><h3>FREEZE</h3><div class="cost">$200</div></div>
+            <div class="shop-item interactive" onclick="Shop.buy('wildcard')"><h3>WILDCARD</h3><div class="cost">$300</div></div>
+            <div class="shop-item interactive" onclick="Shop.buy('midas')"><h3>MIDAS</h3><div class="cost">$400</div></div>
         </div>
-
         <div style="display:flex; gap:10px;">
             <button class="btn interactive" onclick="Game.nextLevel()">NEXT LEVEL >></button>
             <button class="btn interactive" onclick="document.getElementById('info-modal').classList.add('open')">?</button>
@@ -227,7 +201,6 @@
         </div>
     </div>
 
-    <!-- GAME OVER -->
     <div id="screen-gameover" class="ui-layer">
         <h1 id="end-title">GAME OVER</h1>
         <p id="end-desc" style="color:#ccc; font-size:1.5rem;">SCORE: 0</p>
@@ -237,34 +210,29 @@
         </div>
     </div>
 
-    <!-- POPUPS (Z-Index 1000) -->
-    
-    <!-- INFO MODAL -->
+    <!-- MODALS -->
     <div id="info-modal" class="modal">
         <h3>PERKS</h3>
-        <p><strong>THE SEER:</strong> Reveals <strong>ONE</strong> random card from opponent's hand.</p>
-        <p><strong>FREEZE:</strong> Opponent skips their next turn.</p>
-        <p><strong>WILDCARD:</strong> Adds a Joker to your hand instantly.</p>
-        <p><strong>MIDAS:</strong> Double money reward if you win this round.</p>
+        <p><strong>THE SEER:</strong> Reveals ONE random card from opponent.</p>
+        <p><strong>FREEZE:</strong> Opponent skips next turn.</p>
+        <p><strong>WILDCARD:</strong> Adds a Joker to your hand.</p>
+        <p><strong>MIDAS:</strong> Double money if you win.</p>
         <button class="btn interactive" style="width:100%; margin:0;" onclick="document.getElementById('info-modal').classList.remove('open')">CLOSE</button>
     </div>
 
-    <!-- HIGHSCORE MODAL -->
     <div id="score-modal" class="modal">
-        <h3>GAME HISTORY</h3>
-        <p style="text-align:center">HIGHEST LEVEL REACHED:</p>
+        <h3>HISTORY</h3>
+        <p style="text-align:center">BEST RUN:</p>
         <div id="highscore-val" class="score-display">LVL 1</div>
         <button class="btn interactive" style="width:100%; margin:0;" onclick="document.getElementById('score-modal').classList.remove('open')">CLOSE</button>
     </div>
 
-    <!-- FAQ MODAL -->
     <div id="faq-modal" class="modal">
         <h3>HOW TO PLAY</h3>
-        <p><strong>OBJECTIVE:</strong> Be the first to empty your hand.</p>
-        <p><strong>MATCHING:</strong> Play if it matches the <strong>Rank (Number)</strong> or <strong>Suit (Color)</strong> of the top card.</p>
-        <p><strong>STACKING:</strong> You can play multiple cards if they have the same Rank (e.g. three 7s) or match the Suit.</p>
-        <p><strong>STRATEGY:</strong> The <strong>LAST SELECTED CARD</strong> goes on top. Use this to switch colors!</p>
-        <p><strong>RESHUFFLE:</strong> When deck is empty, cards are reshuffled and top card changes.</p>
+        <p><strong>GOAL:</strong> Empty your hand first.</p>
+        <p><strong>MATCHING:</strong> Match <strong>Number</strong> or <strong>Color</strong>.</p>
+        <p><strong>STACKING:</strong> Play multiple cards of same Number or Suit. The <strong>LAST SELECTED</strong> card goes on top!</p>
+        <p><strong>RESHUFFLE:</strong> When deck is empty, pile is reshuffled.</p>
         <button class="btn interactive" style="width:100%; margin:0;" onclick="document.getElementById('faq-modal').classList.remove('open')">CLOSE</button>
     </div>
 
@@ -272,18 +240,21 @@
 
 <script>
 /**
- * SEPTIKA: FINAL MOBILE EDITION
- * - Z-Index Fix for GitHub Pages/Mobile
- * - Fullscreen API
- * - Responsive Layout Calculation
+ * SEPTIKA: v6.2 FINAL
+ * - Fixed Title->Game ghost click bug
+ * - Adaptive Landscape/Portrait Layout
+ * - iOS Safe Area support
  */
 
 /* --- FULLSCREEN --- */
+function checkFullscreenSupport() {
+    if (document.documentElement.requestFullscreen) {
+        document.getElementById('btn-fs').style.display = 'flex';
+    }
+}
 function toggleFullScreen() {
     if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
-            console.log(`Error attempting to enable full-screen mode: ${err.message}`);
-        });
+        document.documentElement.requestFullscreen().catch(e=>{});
     } else {
         if (document.exitFullscreen) document.exitFullscreen();
     }
@@ -293,9 +264,9 @@ function toggleFullScreen() {
 const SaveSys = {
     key: 'septika_highscore_lvl',
     getBest: function() { return parseInt(localStorage.getItem(this.key) || 1); },
-    checkScore: function(currentLvl) {
+    checkScore: function(lvl) {
         const best = this.getBest();
-        if(currentLvl > best) { localStorage.setItem(this.key, currentLvl); return true; }
+        if(lvl > best) { localStorage.setItem(this.key, lvl); return true; }
         return false;
     },
     showHighScores: function() {
@@ -304,7 +275,7 @@ const SaveSys = {
     }
 };
 
-/* --- AUDIO ENGINE --- */
+/* --- AUDIO --- */
 const AudioSys = {
     ctx: null, on: true,
     init: function() {
@@ -333,7 +304,6 @@ function resize() {
     W = window.innerWidth; H = window.innerHeight; 
     C.width = W; C.height = H; 
     ctx.imageSmoothingEnabled = false; 
-    // Trigger re-layout if game is running to adapt to orientation change
     if(Game.state === 'PLAY') Game.layout();
 }
 
@@ -349,7 +319,6 @@ const Game = {
     state: 'TITLE', level: 1, money: 0, inventory: [], 
     deck: [], pile: [], pH: [], bH: [], turn: 'P',
     modifier: null, perkActive: null,
-    // Twists
     speedMult: 1, handLimit: 5, botCheat: false, doubleMoney: false,
 
     startNewCampaign: function() {
@@ -360,8 +329,10 @@ const Game = {
     abandonRun: function() { this.state = 'MENU'; UI.show('screen-menu'); },
 
     startLevel: function() {
-        UI.show('hud-layer'); // Show HUD specifically
-        document.getElementById('screen-shop').classList.remove('active'); // Hide shop manually
+        this.deck = []; this.pH = []; this.bH = []; this.pile = [];
+        
+        UI.show('hud-layer');
+        document.getElementById('screen-shop').classList.remove('active');
         
         this.speedMult = 1; this.handLimit = 5; 
         this.botCheat = false; this.perkActive = null;
@@ -382,30 +353,30 @@ const Game = {
 
         const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
         const SUITS = ['♥','♦','♣','♠'];
-        this.deck = [];
         RANKS.forEach(r => SUITS.forEach(s => this.deck.push({
-            r, s, x:W/2, y:H/2, tx:W/2, ty:H/2, a:0, ta:0, sel:false, selTime: 0, face:false, visible: false
+            r, s, x:W/2, y:H/2, tx:W/2, ty:H/2, a:0, ta:0, sel:false, selTime:0, face:false, visible: false
         })));
         this.deck.sort(()=>Math.random()-0.5);
         
-        this.pH=[]; this.bH=[]; this.pile=[];
         let startHand = this.handLimit;
         let botHand = this.botCheat ? startHand+2 : startHand;
         for(let i=0;i<startHand;i++) this.draw('P');
         for(let i=0;i<botHand;i++) this.draw('B');
 
-        let c=this.deck.pop(); c.face=true; c.ty=H/2-30; this.pile.push(c);
+        let c=this.deck.pop(); 
+        if(c) {
+            c.face=true; c.ty=H/2-30; this.pile.push(c);
+        } else { this.reshufflePile(); }
         
         this.turn = 'P';
         this.updateHUD();
         this.layout();
+        this.state = 'PLAY';
         
         const banner = document.getElementById('twist-banner');
         document.getElementById('twist-text').innerText = this.modifier;
         banner.style.display = 'block';
         setTimeout(()=>{ banner.style.display='none'; }, 3000);
-        
-        this.state = 'PLAY';
     },
 
     reshufflePile: function() {
@@ -431,7 +402,6 @@ const Game = {
     draw: function(who) {
         if(this.deck.length === 0) this.reshufflePile();
         if(this.deck.length === 0) return false;
-
         let c = this.deck.pop();
         if(who==='P') { c.face=true; this.pH.push(c); } 
         else { c.face=false; this.bH.push(c); }
@@ -442,47 +412,34 @@ const Game = {
         if(!this.inventory[slotIdx]) return;
         const p = this.inventory[slotIdx];
         AudioSys.sfxPowerup();
-        
         if(p === 'seer') {
             const hidden = this.bH.filter(c => !c.visible);
             if(hidden.length > 0) {
                 const rnd = hidden[Math.floor(Math.random() * hidden.length)];
-                rnd.visible = true;
-                setTimeout(() => { rnd.visible = false; }, 3000);
+                rnd.visible = true; setTimeout(() => { rnd.visible = false; }, 3000);
             }
-        } else if(p === 'freeze') {
-            this.perkActive = 'freeze';
-        } else if(p === 'wildcard') {
+        } else if(p === 'freeze') this.perkActive = 'freeze';
+        else if(p === 'wildcard') {
             let joker = { r:'JOKER', s:'★', x:W/2, y:H, tx:W/2, ty:H, a:0, ta:0, sel:false, selTime:0, face:true };
-            this.pH.push(joker);
-            this.layout();
-        } else if(p === 'midas') {
-            this.doubleMoney = true;
-        }
-
+            this.pH.push(joker); this.layout();
+        } else if(p === 'midas') this.doubleMoney = true;
         this.inventory.splice(slotIdx, 1);
         this.updateHUD();
     },
 
     layout: function() {
         let n=this.pH.length;
-        // ADAPTIVE LAYOUT: Use % of Height
-        // Portrait: Lower part of screen is approx H*0.8
-        // Landscape: H*0.75
-        let by = H * 0.75; 
+        // Adaptive Layout: 70% of screen height
+        let by = H * 0.7; 
         
         this.pH.forEach((c,i)=>{
-            c.tx = W/2 + (i-(n-1)/2) * Math.min(50, W/(n+1));
-            c.ty = c.sel ? by-30 : by + Math.abs(i-(n-1)/2)*10;
-            c.ta = (i-(n-1)/2)*0.08;
+            c.tx = W/2 + (i-(n-1)/2) * Math.min(55, W/(n+1));
+            c.ty = c.sel ? by-30 : by + Math.abs(i-(n-1)/2)*8;
+            c.ta = (i-(n-1)/2)*0.06;
         });
         let bn=this.bH.length;
         this.bH.forEach((c,i)=>{ c.tx = W/2 + (i-(bn-1)/2)*30; c.ty = H*0.1; c.ta=0; });
-        
-        // Ensure pile is centered
-        if(this.pile.length) {
-            this.pile[this.pile.length-1].ty = H/2 - 30;
-        }
+        if(this.pile.length) this.pile[this.pile.length-1].ty = H/2 - 30;
     },
 
     input: function(x,y) {
@@ -490,31 +447,23 @@ const Game = {
         let hit=false;
         for(let i=this.pH.length-1; i>=0; i--) {
             let c=this.pH[i];
-            if(Math.abs(x-c.x)<45 && Math.abs(y-c.y)<70) {
-                if(c.sel) {
-                    c.sel = false; 
-                } else {
+            // Hitbox adjustment for touch
+            if(Math.abs(x-c.x)<50 && Math.abs(y-c.y)<80) {
+                if(c.sel) { c.sel = false; } else {
                     const selected = this.pH.filter(k=>k.sel);
                     const top = this.pile[this.pile.length-1];
                     let valid = false;
-
                     if (selected.length === 0) {
                         if (c.r === top.r || c.s === top.s || c.r === 'JOKER' || top.r === 'JOKER') valid = true;
                     } else {
                         const first = selected[0];
                         const sameRank = selected.every(k => k.r === first.r);
                         const sameSuit = selected.every(k => k.s === first.s);
-
                         if (sameRank && c.r === first.r) valid = true;
                         else if (sameSuit && c.s === first.s) valid = true;
                         else if (c.r === 'JOKER') valid = true;
                     }
-
-                    if(valid) { 
-                        c.sel=true; 
-                        c.selTime = Date.now();
-                        AudioSys.sfxSel(); 
-                    } else AudioSys.sfxErr();
+                    if(valid) { c.sel=true; c.selTime = Date.now(); AudioSys.sfxSel(); } else AudioSys.sfxErr();
                 }
                 hit=true; break;
             }
@@ -523,17 +472,13 @@ const Game = {
     },
 
     take: function() {
-        if(this.turn==='P' && this.draw('P')) { 
-            this.layout(); this.passTurn(); 
-        }
+        if(this.turn==='P' && this.draw('P')) { this.layout(); this.passTurn(); }
     },
 
     deal: function() {
         let playCards = this.pH.filter(c=>c.sel);
         if(!playCards.length) return;
-        
         const top = this.pile[this.pile.length-1];
-
         playCards.sort((a, b) => {
             const aBridge = (a.r === top.r || a.s === top.s || a.r === 'JOKER' || top.r === 'JOKER');
             const bBridge = (b.r === top.r || b.s === top.s || b.r === 'JOKER' || top.r === 'JOKER');
@@ -541,43 +486,29 @@ const Game = {
             if (!aBridge && bBridge) return 1;
             return a.selTime - b.selTime;
         });
-
         playCards.forEach((c) => { 
-            c.sel=false; 
-            c.tx = W/2 + (Math.random()-0.5)*15; 
-            c.ty = H/2-30; 
-            this.pile.push(c); 
+            c.sel=false; c.tx = W/2 + (Math.random()-0.5)*15; c.ty = H/2-30; this.pile.push(c); 
         });
-
         this.pH = this.pH.filter(c=>!playCards.includes(c));
         this.layout(); 
-        
-        if(!this.pH.length) this.winRound();
-        else this.passTurn();
+        if(!this.pH.length) this.winRound(); else this.passTurn();
     },
 
     passTurn: function() {
         this.uiCheck();
-        if(this.perkActive === 'freeze') {
-             this.perkActive = null;
-             this.turn = 'P'; 
-             return;
-        }
-        this.turn='B'; 
-        setTimeout(()=>this.bot(), 800/this.speedMult);
+        if(this.perkActive === 'freeze') { this.perkActive = null; this.turn = 'P'; return; }
+        this.turn='B'; setTimeout(()=>this.bot(), 800/this.speedMult);
     },
 
     bot: function() {
         let top=this.pile[this.pile.length-1];
         let m=this.bH.filter(c=>c.r===top.r || top.r==='JOKER'); 
         if(!m.length) { let s=this.bH.find(c=>c.s===top.s); if(s) m=[s]; }
-        
         if(m.length) {
             m.forEach(c=>{ c.face=true; c.tx=W/2; c.ty=H/2-30; this.pile.push(c); });
             this.bH=this.bH.filter(c=>!m.includes(c));
             this.layout();
-            if(!this.bH.length) this.loseRound();
-            else { this.turn='P'; this.uiCheck(); }
+            if(!this.bH.length) this.loseRound(); else { this.turn='P'; this.uiCheck(); }
         } else {
             this.draw('B'); this.layout(); this.turn='P'; this.uiCheck();
         }
@@ -589,14 +520,12 @@ const Game = {
         let reward = 100 + (this.level * 20);
         if(this.doubleMoney) reward *= 2;
         this.money += reward;
-        
         if(this.level === 16) {
              document.getElementById('end-title').innerText = "ASCENDED";
              document.getElementById('end-desc').innerText = "YOU BEAT THE SYSTEM";
              UI.show('screen-gameover');
         } else {
-             UI.show('screen-shop');
-             Shop.update();
+             UI.show('screen-shop'); Shop.update();
         }
     },
     
@@ -612,16 +541,12 @@ const Game = {
 
     uiCheck: function() {
         let s=this.pH.some(c=>c.sel);
-        const bD = document.getElementById('btn-deal');
-        const bT = document.getElementById('btn-take');
-        if(bD) bD.disabled=!s; 
-        if(bT) bT.disabled=s;
+        document.getElementById('btn-deal').disabled=!s; document.getElementById('btn-take').disabled=s;
     },
 
     updateHUD: function() {
         document.getElementById('hud-level').innerText = (this.level > 16 ? "VOID " + (this.level-16) : "LVL " + this.level);
         document.getElementById('hud-money').innerText = "$" + this.money;
-        
         for(let i=0; i<2; i++) {
             const slot = document.getElementById('slot-'+i);
             const perkKey = this.inventory[i];
@@ -644,9 +569,7 @@ const Game = {
         let t = Date.now()/1000;
         ctx.strokeStyle = "rgba(0, 240, 255, 0.1)";
         ctx.beginPath();
-        for(let x=0; x<W; x+=50) {
-            ctx.moveTo(x, 0); ctx.lineTo(x + Math.sin(t + x*0.01)*20, H);
-        }
+        for(let x=0; x<W; x+=50) { ctx.moveTo(x, 0); ctx.lineTo(x + Math.sin(t + x*0.01)*20, H); }
         ctx.stroke();
 
         const list = [...this.pile, ...this.bH, ...this.pH];
@@ -674,23 +597,18 @@ const Game = {
                      ctx.shadowColor = "transparent"; ctx.beginPath(); ctx.arc(0,0,15,0,7); ctx.stroke();
                 }
             }
-
             ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-
             if(c.face) {
                 ctx.fillStyle = (c.s==='♥'||c.s==='♦') ? "#ff0055" : (c.r==='JOKER' ? "#ffd700" : "#111");
                 ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="bold 30px 'VT323'";
-                
                 if(c.r==='JOKER') {
-                     ctx.font="40px serif"; ctx.fillText("★", 0, 0);
-                     ctx.font="20px serif"; ctx.fillText("WILD", 0, 40);
+                     ctx.font="40px serif"; ctx.fillText("★", 0, 0); ctx.font="20px serif"; ctx.fillText("WILD", 0, 40);
                 } else {
                      ctx.fillText(c.r, -w/2+20, -h/2+25); ctx.font="50px serif"; ctx.fillText(c.s, 0, 5);
                      ctx.save(); ctx.rotate(Math.PI); ctx.font="bold 30px 'VT323'"; ctx.fillText(c.r, -w/2+20, -h/2+25); ctx.restore();
                 }
             } else if(c.visible) {
-                ctx.fillStyle = "#000"; ctx.font="bold 30px 'VT323'";
-                ctx.fillText(c.r, 0, -10); ctx.font="30px serif"; ctx.fillText(c.s, 0, 20);
+                ctx.fillStyle = "#000"; ctx.font="bold 30px 'VT323'"; ctx.fillText(c.r, 0, -10); ctx.font="30px serif"; ctx.fillText(c.s, 0, 20);
             }
             ctx.restore();
         });
@@ -700,18 +618,16 @@ const Game = {
 /* --- UI --- */
 const UI = {
     show: function(id) {
-        // Reset all screens
         ['screen-title','screen-menu','screen-shop','screen-game','screen-gameover'].forEach(s=>{
-            const el = document.getElementById(s);
-            el.classList.add('hidden'); 
-            el.classList.remove('active');
+            document.getElementById(s).classList.remove('active');
         });
-
         const target = document.getElementById(id);
-        target.classList.remove('hidden');
         target.classList.add('active');
+        
+        // Anti-ghost-click lock
+        target.classList.add('locked');
+        setTimeout(() => target.classList.remove('locked'), 500);
 
-        // State & HUD management
         if(id === 'screen-game') {
             Game.state = 'PLAY';
             document.getElementById('hud-layer').classList.remove('hidden');
@@ -724,19 +640,22 @@ const UI = {
 
 /* --- INPUT --- */
 window.addEventListener('resize', resize);
-window.onload = function(){ resize(); Game.loop(); };
+window.onload = function(){ 
+    resize(); 
+    checkFullscreenSupport();
+    Game.loop(); 
+};
 
+// Global Input Handler
 const handleInput = (e) => {
-    // Only process Title Screen clicks globally
-    if(Game.state==='TITLE') {
+    // 1. Title Screen Click
+    if(Game.state === 'TITLE') {
         if(e.type==='touchstart') e.preventDefault();
-        try{ AudioSys.init(); }catch(e){}
+        try { AudioSys.init(); } catch(e){}
         UI.show('screen-menu');
-    } 
-    // Gameplay clicks (Canvas only)
-    else if(Game.state==='PLAY') {
-        // Don't preventDefault globally on touch, or buttons won't work!
-        // Just check coordinate for canvas logic
+    }
+    // 2. Gameplay Input (Canvas only)
+    else if(Game.state === 'PLAY') {
         const r=C.getBoundingClientRect();
         let x = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
         let y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
@@ -744,6 +663,7 @@ const handleInput = (e) => {
     }
 };
 
+// Listeners
 window.addEventListener('mousedown', handleInput);
 window.addEventListener('touchstart', handleInput, {passive:false});
 
