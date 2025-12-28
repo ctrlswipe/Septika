@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SEPTIKA: ROGUELIKE</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        :root {
+            --bg-dark: #120b18;
+            --accent-cyan: #00f0ff;
+            --accent-mag: #ff0055;
+            --accent-gold: #ffd700;
+            --ui-bg: #1a1025;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: var(--bg-dark);
+            font-family: 'VT323', monospace;
+            user-select: none; -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #game-container { position: relative; width: 100%; height: 100%; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+        /* FX Layers */
+        .scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.05) 50%);
+            background-size: 100% 4px; pointer-events: none; z-index: 50;
+        }
+        .crt-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.2) 100%);
+            pointer-events: none; z-index: 51;
+        }
+
+        /* UI Base */
+        .ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 100; pointer-events: none;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 0.2s, transform 0.2s;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(4px);
+        }
+        .ui-layer.active { pointer-events: auto; opacity: 1; transform: scale(1); }
+        .ui-layer.hidden { pointer-events: none; opacity: 0; transform: scale(1.1); }
+        .ui-layer.transparent { background: transparent; backdrop-filter: none; }
+
+        /* Text Styles */
+        h1 {
+            font-size: clamp(3rem, 10vw, 6rem); margin: 0; line-height: 0.8; color: #fff;
+            text-shadow: 3px 3px 0 var(--accent-mag), -3px -3px 0 var(--accent-cyan);
+            transform: rotate(-2deg); text-transform: uppercase;
+        }
+        h2 { font-size: 2.5rem; color: var(--accent-cyan); margin-bottom: 20px; text-transform: uppercase; }
+        
+        .level-badge {
+            background: var(--accent-mag); color: #fff; padding: 5px 10px;
+            font-size: 1.2rem; transform: skew(-10deg); margin-bottom: 10px;
+            box-shadow: 3px 3px 0 #fff;
+        }
+
+        /* Buttons */
+        .btn {
+            background: var(--ui-bg); border: 2px solid #fff;
+            color: #fff; padding: 10px 25px;
+            font-family: 'VT323', monospace; font-size: 1.5rem;
+            cursor: pointer; margin: 8px; text-transform: uppercase;
+            box-shadow: 4px 4px 0 var(--accent-mag);
+            transition: transform 0.1s;
+        }
+        .btn:hover:not(:disabled) { transform: translate(-2px,-2px); background: #fff; color: #000; box-shadow: 6px 6px 0 var(--accent-cyan); }
+        .btn:active { transform: translate(2px,2px); box-shadow: none; }
+        .btn:disabled { opacity: 0.5; filter: grayscale(1); cursor: default; }
+        .btn-danger { border-color: var(--accent-mag); color: var(--accent-mag); }
+        .btn-danger:hover { background: var(--accent-mag); color: #fff; }
+
+        /* Shop Grid */
+        .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px; }
+        .shop-item {
+            background: rgba(0,0,0,0.6); border: 1px solid #444; padding: 15px;
+            text-align: center; cursor: pointer; transition: 0.2s;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .shop-item:hover { border-color: var(--accent-gold); background: #2a2010; }
+        .shop-item h3 { margin: 5px 0; color: var(--accent-gold); }
+        .shop-item .cost { color: var(--accent-cyan); font-size: 1.2rem; }
+
+        /* Perks HUD */
+        .perk-slot {
+            width: 60px; height: 60px; border: 2px dashed rgba(255,255,255,0.3);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; background: rgba(0,0,0,0.5); pointer-events: auto;
+            position: relative; border-radius: 8px;
+        }
+        .perk-slot.filled { border-style: solid; border-color: var(--accent-gold); background: rgba(0,0,0,0.8); }
+        .perk-slot:hover { transform: scale(1.1); }
+        .perk-container {
+            position: absolute; bottom: 120px; right: 20px;
+            display: flex; gap: 15px; z-index: 200;
+        }
+
+        /* Modals */
+        .modal {
+            position: absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+            width: 85%; max-width: 500px; background: #111; border: 2px solid #fff;
+            padding: 20px; z-index: 999; display: none; text-align: left;
+            box-shadow: 0 0 50px rgba(0,0,0,0.9);
+            max-height: 80vh; overflow-y: auto;
+        }
+        .modal.open { display: block; }
+        .modal h3 { color: var(--accent-cyan); margin-top: 0; text-align: center; text-transform: uppercase;}
+        .modal p { color: #ccc; font-size: 1.2rem; line-height: 1.4; margin-bottom: 10px; }
+        .modal strong { color: var(--accent-gold); }
+        .score-display { text-align: center; font-size: 3rem; color: var(--accent-gold); margin: 20px 0; border: 1px dashed #444; padding: 10px;}
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div class="scanlines"></div>
+    <div class="crt-overlay"></div>
+
+    <!-- TITLE SCREEN -->
+    <div id="screen-title" class="ui-layer active" style="cursor: pointer;">
+        <h1>SEPTIKA</h1>
+        <div class="level-badge">RESHUFFLE UPDATE</div>
+        <div class="blink" style="margin-top:30px; font-size:1.5rem;">[ PRESS TO START ]</div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="screen-menu" class="ui-layer hidden">
+        <h1>MENU</h1>
+        <button class="btn" onclick="Game.startNewCampaign()">NEW RUN</button>
+        <button class="btn" onclick="SaveSys.showHighScores()">HIGH SCORES</button>
+        <button class="btn" onclick="document.getElementById('faq-modal').classList.add('open')">RULES / FAQ</button>
+        <button class="btn" onclick="window.location.reload()">EXIT GAME</button>
+    </div>
+
+    <!-- SHOP -->
+    <div id="screen-shop" class="ui-layer hidden">
+        <h2>BLACK MARKET</h2>
+        <div style="color: #fff;">WALLET: <span id="shop-money" style="color:var(--accent-gold)">$0</span></div>
+        
+        <div class="shop-grid">
+            <div class="shop-item" onclick="Shop.buy('seer')">
+                <h3>THE SEER</h3>
+                <div class="cost">$150</div>
+            </div>
+            <div class="shop-item" onclick="Shop.buy('freeze')">
+                <h3>FREEZE</h3>
+                <div class="cost">$200</div>
+            </div>
+            <div class="shop-item" onclick="Shop.buy('wildcard')">
+                <h3>WILDCARD</h3>
+                <div class="cost">$300</div>
+            </div>
+            <div class="shop-item" onclick="Shop.buy('midas')">
+                <h3>MIDAS</h3>
+                <div class="cost">$400</div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+            <button class="btn" onclick="Game.nextLevel()">NEXT LEVEL >></button>
+            <button class="btn" onclick="document.getElementById('info-modal').classList.add('open')">?</button>
+        </div>
+        <div style="margin-top:20px;">
+            <button class="btn btn-danger" onclick="Game.abandonRun()" style="font-size: 1rem;">ABANDON RUN</button>
+        </div>
+    </div>
+
+    <!-- GAME HUD -->
+    <div id="screen-game" class="ui-layer hidden transparent">
+        <div style="position:absolute; top:20px; width:100%; display:flex; justify-content:space-between; padding:0 20px; box-sizing:border-box; color:#fff; font-size:1.5rem; text-shadow:2px 2px 0 #000;">
+            <span id="hud-level">LVL 1</span>
+            <span id="hud-money" style="color:var(--accent-gold)">$0</span>
+        </div>
+        
+        <!-- Perk Slots HUD -->
+        <div class="perk-container">
+            <div class="perk-slot" id="slot-0" onclick="Game.usePerk(0)"></div>
+            <div class="perk-slot" id="slot-1" onclick="Game.usePerk(1)"></div>
+        </div>
+
+        <div style="position:absolute; bottom:20px; width:100%; display:flex; justify-content:center; gap:20px; pointer-events:none;">
+            <button id="btn-take" class="btn" style="pointer-events:auto" onclick="Game.take()">DRAW</button>
+            <button id="btn-deal" class="btn" style="pointer-events:auto" onclick="Game.deal()">PLAY</button>
+        </div>
+        
+        <!-- Twist Banner -->
+        <div id="twist-banner" style="position:absolute; top:40%; width:100%; text-align:center; color:var(--accent-mag); font-size:3rem; font-weight:bold; display:none; text-shadow:0 0 10px #000;">
+            MODIFIER: <span id="twist-text">NONE</span>
+        </div>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="screen-gameover" class="ui-layer hidden">
+        <h1 id="end-title">GAME OVER</h1>
+        <p id="end-desc" style="color:#ccc; font-size:1.5rem;">SCORE: 0</p>
+        <div style="display:flex; gap:10px;">
+            <button class="btn" onclick="Game.startNewCampaign()">TRY AGAIN</button>
+            <button class="btn" onclick="UI.show('screen-menu')">MAIN MENU</button>
+        </div>
+    </div>
+
+    <!-- INFO MODAL -->
+    <div id="info-modal" class="modal">
+        <h3>PERKS</h3>
+        <p><strong>THE SEER:</strong> Reveals <strong>ONE</strong> random card from opponent's hand.</p>
+        <p><strong>FREEZE:</strong> Opponent skips their next turn.</p>
+        <p><strong>WILDCARD:</strong> Adds a Joker to your hand instantly.</p>
+        <p><strong>MIDAS:</strong> Double money reward if you win this round.</p>
+        <button class="btn" style="width:100%; margin:0;" onclick="document.getElementById('info-modal').classList.remove('open')">CLOSE</button>
+    </div>
+
+    <!-- HIGHSCORE MODAL -->
+    <div id="score-modal" class="modal">
+        <h3>GAME HISTORY</h3>
+        <p style="text-align:center">HIGHEST LEVEL REACHED:</p>
+        <div id="highscore-val" class="score-display">LVL 1</div>
+        <button class="btn" style="width:100%; margin:0;" onclick="document.getElementById('score-modal').classList.remove('open')">CLOSE</button>
+    </div>
+
+    <!-- FAQ MODAL -->
+    <div id="faq-modal" class="modal">
+        <h3>HOW TO PLAY</h3>
+        <p><strong>OBJECTIVE:</strong> Be the first to empty your hand.</p>
+        <p><strong>MATCHING:</strong> You can play a card if it matches the <strong>Rank (Number)</strong> or <strong>Suit (Color)</strong> of the top card on the pile.</p>
+        <p><strong>STACKING:</strong> You can play multiple cards if they have the same Rank (e.g., three 7s) or continue a Suit chain.</p>
+        <p><strong>STRATEGY:</strong> The <strong>LAST SELECTED CARD</strong> will end up on top. Use this to change the suit!</p>
+        <p><strong>RESHUFFLE:</strong> When the deck is empty, the played pile is shuffled into a new deck, and the top card changes randomly.</p>
+        <button class="btn" style="width:100%; margin:0;" onclick="document.getElementById('faq-modal').classList.remove('open')">CLOSE</button>
+    </div>
+
+</div>
+
+<script>
+/**
+ * SEPTIKA: v5.6
+ * - Deck Reshuffle logic
+ * - Seer Nerf (One card only)
+ */
+
+/* --- PERSISTENCE --- */
+const SaveSys = {
+    key: 'septika_highscore_lvl',
+    getBest: function() { return parseInt(localStorage.getItem(this.key) || 1); },
+    checkScore: function(currentLvl) {
+        const best = this.getBest();
+        if(currentLvl > best) { localStorage.setItem(this.key, currentLvl); return true; }
+        return false;
+    },
+    showHighScores: function() {
+        document.getElementById('highscore-val').innerText = "LVL " + this.getBest();
+        document.getElementById('score-modal').classList.add('open');
+    }
+};
+
+/* --- AUDIO ENGINE --- */
+const AudioSys = {
+    ctx: null, on: true,
+    init: function() {
+        if(!this.ctx) this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+        if(this.ctx.state==='suspended') this.ctx.resume();
+    },
+    tone: function(f, type, dur, vol=0.1) {
+        if(!this.on || !this.ctx) return;
+        const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        o.type=type; o.frequency.setValueAtTime(f, t);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+0.05); g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+        o.connect(g); g.connect(this.ctx.destination); o.start(); o.stop(t+dur);
+    },
+    sfxBuy: function() { this.tone(600, 'sine', 0.1); setTimeout(()=>this.tone(800, 'square', 0.2), 100); },
+    sfxPowerup: function() { this.tone(200, 'sawtooth', 0.5); setTimeout(()=>this.tone(1200, 'sine', 0.5), 100); },
+    sfxWin: function() { [0,200,400].forEach(d=>setTimeout(()=>this.tone(440+d, 'square', 0.3), d)); },
+    sfxSel: function() { this.tone(880,'sine',0.05); },
+    sfxErr: function() { this.tone(150,'sawtooth',0.2); }
+};
+
+/* --- GRAPHICS --- */
+const C = document.getElementById('gameCanvas');
+const ctx = C.getContext('2d', {alpha:false});
+let W, H;
+function resize() { W = window.innerWidth; H = window.innerHeight; C.width = W; C.height = H; ctx.imageSmoothingEnabled = false; }
+
+/* --- GAME LOGIC --- */
+const PERKS = {
+    'seer': { name: 'SEER', cost: 150, color: '#00f0ff', icon: '👁️' },
+    'freeze': { name: 'FREEZE', cost: 200, color: '#0088ff', icon: '❄️' },
+    'wildcard': { name: 'WILD', cost: 300, color: '#ff0055', icon: '🃏' },
+    'midas': { name: 'MIDAS', cost: 400, color: '#ffd700', icon: '💰' }
+};
+
+const Game = {
+    state: 'TITLE', level: 1, money: 0, inventory: [], 
+    deck: [], pile: [], pH: [], bH: [], turn: 'P',
+    modifier: null, perkActive: null,
+    // Twists
+    speedMult: 1, handLimit: 5, botCheat: false, doubleMoney: false,
+
+    startNewCampaign: function() {
+        this.level = 1; this.money = 100; this.inventory = [];
+        this.startLevel();
+    },
+
+    abandonRun: function() { this.state = 'MENU'; UI.show('screen-menu'); },
+
+    startLevel: function() {
+        UI.show('screen-game');
+        this.speedMult = 1; this.handLimit = 5; 
+        this.botCheat = false; this.perkActive = null;
+        this.doubleMoney = false; this.modifier = "NONE";
+
+        if(this.level > 16) {
+             this.modifier = "ENDLESS VOID"; this.botCheat = Math.random()>0.5; this.speedMult = 1.5;
+        } else if (this.level > 2) {
+            const twists = [
+                {t: "HYPER SPEED", f: ()=>{ this.speedMult=2; }},
+                {t: "DROUGHT", f: ()=>{ this.handLimit=3; }},
+                {t: "THE HORDE", f: ()=>{ this.botCheat=true; }},
+                {t: "HEAVY HANDS", f: ()=>{ this.handLimit=7; }}
+            ];
+            const twist = twists[(this.level-3) % twists.length];
+            this.modifier = twist.t; twist.f();
+        }
+
+        const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+        const SUITS = ['♥','♦','♣','♠'];
+        this.deck = [];
+        RANKS.forEach(r => SUITS.forEach(s => this.deck.push({
+            r, s, x:W/2, y:H/2, tx:W/2, ty:H/2, a:0, ta:0, sel:false, selTime: 0, face:false, visible: false
+        })));
+        this.deck.sort(()=>Math.random()-0.5);
+        
+        this.pH=[]; this.bH=[]; this.pile=[];
+        let startHand = this.handLimit;
+        let botHand = this.botCheat ? startHand+2 : startHand;
+        for(let i=0;i<startHand;i++) this.draw('P');
+        for(let i=0;i<botHand;i++) this.draw('B');
+
+        let c=this.deck.pop(); c.face=true; c.ty=H/2-30; this.pile.push(c);
+        
+        this.turn = 'P';
+        this.updateHUD();
+        this.layout();
+        
+        const banner = document.getElementById('twist-banner');
+        document.getElementById('twist-text').innerText = this.modifier;
+        banner.style.display = 'block';
+        setTimeout(()=>{ banner.style.display='none'; }, 3000);
+    },
+
+    reshufflePile: function() {
+        if(this.pile.length < 2) return; // Cannot shuffle if only 1 card
+
+        // Logic: 
+        // 1. Take all cards from pile (including top)
+        // 2. Put them in deck.
+        // 3. Shuffle deck.
+        // 4. Draw ONE card from deck to be new top (start card).
+        
+        const oldPile = [...this.pile];
+        this.pile = []; // Empty pile
+        
+        // Move to deck and reset props
+        oldPile.forEach(c => {
+            c.face = false; c.sel = false; c.visible = false; c.x = W/2; c.y = H/2;
+            this.deck.push(c);
+        });
+        
+        // Shuffle
+        this.deck.sort(()=>Math.random()-0.5);
+        
+        // New Top Card
+        let newTop = this.deck.pop();
+        newTop.face = true; 
+        newTop.ty = H/2-30; 
+        newTop.x = W/2; newTop.y = H/2; // Start from center
+        this.pile.push(newTop);
+
+        // Visual Feedback
+        const banner = document.getElementById('twist-banner');
+        document.getElementById('twist-text').innerText = "DECK RESHUFFLED";
+        banner.style.display = 'block';
+        setTimeout(()=>{ banner.style.display='none'; }, 2000);
+        AudioSys.sfxBuy();
+    },
+
+    draw: function(who) {
+        if(this.deck.length === 0) {
+            this.reshufflePile();
+        }
+
+        if(this.deck.length === 0) return false; // Still empty? (Very rare, means all cards in hands)
+
+        let c = this.deck.pop();
+        if(who==='P') { c.face=true; this.pH.push(c); } 
+        else { c.face=false; this.bH.push(c); }
+        AudioSys.tone(400, 'square', 0.05); return true;
+    },
+
+    usePerk: function(slotIdx) {
+        if(!this.inventory[slotIdx]) return;
+        const p = this.inventory[slotIdx];
+        AudioSys.sfxPowerup();
+        
+        if(p === 'seer') {
+            // NERF: Reveal only ONE random card
+            const hidden = this.bH.filter(c => !c.visible);
+            if(hidden.length > 0) {
+                const rnd = hidden[Math.floor(Math.random() * hidden.length)];
+                rnd.visible = true;
+                setTimeout(() => { rnd.visible = false; }, 3000);
+            }
+        } else if(p === 'freeze') {
+            this.perkActive = 'freeze';
+        } else if(p === 'wildcard') {
+            let joker = { r:'JOKER', s:'★', x:W/2, y:H, tx:W/2, ty:H, a:0, ta:0, sel:false, selTime:0, face:true };
+            this.pH.push(joker);
+            this.layout();
+        } else if(p === 'midas') {
+            this.doubleMoney = true;
+        }
+
+        this.inventory.splice(slotIdx, 1);
+        this.updateHUD();
+    },
+
+    layout: function() {
+        let n=this.pH.length;
+        let by=H-240; 
+        this.pH.forEach((c,i)=>{
+            c.tx = W/2 + (i-(n-1)/2) * Math.min(50, W/(n+1));
+            c.ty = c.sel ? by-30 : by + Math.abs(i-(n-1)/2)*10;
+            c.ta = (i-(n-1)/2)*0.08;
+        });
+        let bn=this.bH.length;
+        this.bH.forEach((c,i)=>{ c.tx = W/2 + (i-(bn-1)/2)*30; c.ty = 60; c.ta=0; });
+    },
+
+    input: function(x,y) {
+        if(this.state!=='PLAY' || this.turn!=='P') return;
+        let hit=false;
+        for(let i=this.pH.length-1; i>=0; i--) {
+            let c=this.pH[i];
+            if(Math.abs(x-c.x)<45 && Math.abs(y-c.y)<70) {
+                if(c.sel) {
+                    c.sel = false; 
+                } else {
+                    const selected = this.pH.filter(k=>k.sel);
+                    const top = this.pile[this.pile.length-1];
+                    let valid = false;
+
+                    if (selected.length === 0) {
+                        if (c.r === top.r || c.s === top.s || c.r === 'JOKER' || top.r === 'JOKER') valid = true;
+                    } else {
+                        const first = selected[0];
+                        const sameRank = selected.every(k => k.r === first.r);
+                        const sameSuit = selected.every(k => k.s === first.s);
+
+                        if (sameRank && c.r === first.r) valid = true;
+                        else if (sameSuit && c.s === first.s) valid = true;
+                        else if (c.r === 'JOKER') valid = true;
+                    }
+
+                    if(valid) { 
+                        c.sel=true; 
+                        c.selTime = Date.now(); // Record Timestamp
+                        AudioSys.sfxSel(); 
+                    } else AudioSys.sfxErr();
+                }
+                hit=true; break;
+            }
+        }
+        if(hit) { this.layout(); this.uiCheck(); }
+    },
+
+    take: function() {
+        if(this.turn==='P' && this.draw('P')) { 
+            this.layout(); this.passTurn(); 
+        }
+    },
+
+    deal: function() {
+        let playCards = this.pH.filter(c=>c.sel);
+        if(!playCards.length) return;
+        
+        const top = this.pile[this.pile.length-1];
+
+        // --- SORTING LOGIC ---
+        playCards.sort((a, b) => {
+            const aBridge = (a.r === top.r || a.s === top.s || a.r === 'JOKER' || top.r === 'JOKER');
+            const bBridge = (b.r === top.r || b.s === top.s || b.r === 'JOKER' || top.r === 'JOKER');
+            if (aBridge && !bBridge) return -1;
+            if (!aBridge && bBridge) return 1;
+            return a.selTime - b.selTime;
+        });
+
+        playCards.forEach((c) => { 
+            c.sel=false; 
+            c.tx = W/2 + (Math.random()-0.5)*15; 
+            c.ty = H/2-30; 
+            this.pile.push(c); 
+        });
+
+        this.pH = this.pH.filter(c=>!playCards.includes(c));
+        this.layout(); 
+        
+        if(!this.pH.length) this.winRound();
+        else this.passTurn();
+    },
+
+    passTurn: function() {
+        this.uiCheck();
+        if(this.perkActive === 'freeze') {
+             this.perkActive = null;
+             this.turn = 'P'; 
+             return;
+        }
+        this.turn='B'; 
+        setTimeout(()=>this.bot(), 800/this.speedMult);
+    },
+
+    bot: function() {
+        let top=this.pile[this.pile.length-1];
+        let m=this.bH.filter(c=>c.r===top.r || top.r==='JOKER'); 
+        if(!m.length) { let s=this.bH.find(c=>c.s===top.s); if(s) m=[s]; }
+        
+        if(m.length) {
+            m.forEach(c=>{ c.face=true; c.tx=W/2; c.ty=H/2-30; this.pile.push(c); });
+            this.bH=this.bH.filter(c=>!m.includes(c));
+            this.layout();
+            if(!this.bH.length) this.loseRound();
+            else { this.turn='P'; this.uiCheck(); }
+        } else {
+            this.draw('B'); this.layout(); this.turn='P'; this.uiCheck();
+        }
+    },
+    
+    winRound: function() {
+        AudioSys.sfxWin();
+        SaveSys.checkScore(this.level);
+        let reward = 100 + (this.level * 20);
+        if(this.doubleMoney) reward *= 2;
+        this.money += reward;
+        
+        if(this.level === 16) {
+             document.getElementById('end-title').innerText = "ASCENDED";
+             document.getElementById('end-desc').innerText = "YOU BEAT THE SYSTEM";
+             UI.show('screen-gameover');
+        } else {
+             UI.show('screen-shop');
+             Shop.update();
+        }
+    },
+    
+    loseRound: function() {
+        AudioSys.tone(100, 'sawtooth', 1.0);
+        SaveSys.checkScore(this.level);
+        document.getElementById('end-title').innerText = "ELIMINATED";
+        document.getElementById('end-desc').innerText = `REACHED LEVEL ${this.level}`;
+        UI.show('screen-gameover');
+    },
+
+    nextLevel: function() { this.level++; this.startLevel(); },
+
+    uiCheck: function() {
+        let s=this.pH.some(c=>c.sel);
+        document.getElementById('btn-deal').disabled=!s; 
+        document.getElementById('btn-take').disabled=s;
+    },
+
+    updateHUD: function() {
+        document.getElementById('hud-level').innerText = (this.level > 16 ? "VOID " + (this.level-16) : "LVL " + this.level);
+        document.getElementById('hud-money').innerText = "$" + this.money;
+        
+        for(let i=0; i<2; i++) {
+            const slot = document.getElementById('slot-'+i);
+            const perkKey = this.inventory[i];
+            if(perkKey) {
+                const data = PERKS[perkKey];
+                slot.innerHTML = `<span style="font-size:24px">${data.icon}</span>`;
+                slot.className = "perk-slot filled";
+                slot.style.borderColor = data.color;
+            } else {
+                slot.innerHTML = "";
+                slot.className = "perk-slot";
+                slot.style.borderColor = "rgba(255,255,255,0.3)";
+            }
+        }
+    },
+
+    loop: function() {
+        requestAnimationFrame(()=>this.loop());
+        ctx.fillStyle = "#120b18"; ctx.fillRect(0,0,W,H);
+        let t = Date.now()/1000;
+        ctx.strokeStyle = "rgba(0, 240, 255, 0.1)";
+        ctx.beginPath();
+        for(let x=0; x<W; x+=50) {
+            ctx.moveTo(x, 0); ctx.lineTo(x + Math.sin(t + x*0.01)*20, H);
+        }
+        ctx.stroke();
+
+        const list = [...this.pile, ...this.bH, ...this.pH];
+        list.forEach(c => {
+            c.x += (c.tx-c.x)*0.1; c.y += (c.ty-c.y)*0.1;
+            let da = c.ta-c.a; if(da>3.14)da-=6.28; if(da<-3.14)da+=6.28; c.a+=da*0.1;
+
+            ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.a);
+            let w=80, h=120;
+            
+            if(c.sel) { ctx.shadowColor = "#00f0ff"; ctx.shadowBlur = 20; } 
+            else { ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10; ctx.shadowOffsetY=5; }
+
+            if(c.face) {
+                ctx.fillStyle = "#e6e1d8";
+                if(c.r === 'JOKER') ctx.fillStyle = "#221133"; 
+                ctx.fillRect(-w/2, -h/2, w, h);
+                ctx.strokeStyle = "#111"; ctx.lineWidth=2; ctx.strokeRect(-w/2,-h/2,w,h);
+            } else {
+                ctx.fillStyle = "#2d1b3e"; ctx.fillRect(-w/2,-h/2,w,h);
+                ctx.strokeStyle = "#ff0055"; ctx.lineWidth=1; ctx.strokeRect(-w/2,-h/2,w,h);
+                if(c.visible) {
+                    ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(-w/2+5, -h/2+5, w-10, h-10);
+                } else {
+                     ctx.shadowColor = "transparent"; ctx.beginPath(); ctx.arc(0,0,15,0,7); ctx.stroke();
+                }
+            }
+
+            ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+            if(c.face) {
+                ctx.fillStyle = (c.s==='♥'||c.s==='♦') ? "#ff0055" : (c.r==='JOKER' ? "#ffd700" : "#111");
+                ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="bold 30px 'VT323'";
+                
+                if(c.r==='JOKER') {
+                     ctx.font="40px serif"; ctx.fillText("★", 0, 0);
+                     ctx.font="20px serif"; ctx.fillText("WILD", 0, 40);
+                } else {
+                     ctx.fillText(c.r, -w/2+20, -h/2+25); ctx.font="50px serif"; ctx.fillText(c.s, 0, 5);
+                     ctx.save(); ctx.rotate(Math.PI); ctx.font="bold 30px 'VT323'"; ctx.fillText(c.r, -w/2+20, -h/2+25); ctx.restore();
+                }
+            } else if(c.visible) {
+                ctx.fillStyle = "#000"; ctx.font="bold 30px 'VT323'";
+                ctx.fillText(c.r, 0, -10); ctx.font="30px serif"; ctx.fillText(c.s, 0, 20);
+            }
+            ctx.restore();
+        });
+    }
+};
+
+/* --- SHOP --- */
+const Shop = {
+    update: function() {
+        document.getElementById('shop-money').innerText = "$" + Game.money;
+        document.getElementById('shop-inv').innerText = Game.inventory.length + "/2";
+    },
+    buy: function(itemKey) {
+        const item = PERKS[itemKey];
+        if(Game.money >= item.cost) {
+            if(Game.inventory.length < 2) {
+                Game.money -= item.cost; Game.inventory.push(itemKey);
+                AudioSys.sfxBuy(); this.update();
+            } else { AudioSys.sfxErr(); }
+        } else { AudioSys.sfxErr(); }
+    }
+};
+
+/* --- UI --- */
+const UI = {
+    show: function(id) {
+        ['screen-title','screen-menu','screen-shop','screen-game','screen-gameover'].forEach(s=>{
+            const el = document.getElementById(s);
+            if(s===id) { el.classList.remove('hidden'); el.classList.add('active'); Game.state=(id==='screen-game'?'PLAY':'MENU'); }
+            else { el.classList.add('hidden'); el.classList.remove('active'); }
+        });
+        if(id==='screen-title') Game.state='TITLE';
+    },
+};
+
+/* --- INPUT --- */
+window.addEventListener('resize', resize);
+window.onload = function(){ resize(); Game.loop(); };
+const handleInput = (e) => {
+    if(Game.state==='TITLE') {
+        if(e.type==='touchstart') e.preventDefault();
+        try{ AudioSys.init(); }catch(e){}
+        UI.show('screen-menu');
+    } else if(Game.state==='PLAY') {
+        if(e.type==='touchstart') e.preventDefault();
+        const r=C.getBoundingClientRect();
+        let x = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+        let y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+        Game.input(x-r.left, y-r.top);
+    }
+};
+window.addEventListener('mousedown', handleInput);
+window.addEventListener('touchstart', handleInput, {passive:false});
+
+</script>
+</body>
+</html>
+
